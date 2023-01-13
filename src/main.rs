@@ -1,69 +1,50 @@
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
+extern crate ini;
 
 use serde::Deserialize;
 
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
-use reqwest::Response;
-use reqwest::blocking::Client;
+use ini::Ini;
 
-
+#[derive(Debug)]
 #[derive(Deserialize)]
 struct Repo {
     name: String,
-    description: String,
-    language: String,
 }
 
-#[derive(Deserialize)]
-struct Team {
-    repos: Vec<Repo>,
-}
-
-pub fn get_repos(url: &str, client: &Client, token: &str) -> Response {
-    let res = client
-        .get(url)
-        .header("Authorization", format!("Bearer {}", token))
+fn fetch_repositories(user_name: &str, access_token: &str) -> Result<Vec<Repo>, reqwest::Error> {
+    let client = reqwest::blocking::Client::new();
+    let url = format!("https://api.github.com/users/{}/repos", user_name);
+    println!("{}", url);
+    let response = client
+        .get(&url)
+        //.header("Authorization", format!("Token {}", access_token))
+        .header("User-Agent", "request")
         .send()?;
-
-    let mut res = match res {
-        Ok(res) => res,
-        Err(err) => {
-            println!("Error making request to GitHub API: {}", err);
-        }
-    };
-    if !res.status().is_success() {
-        let error_text = res.text().unwrap_or("unknown error".to_string());
-        println!("Error: {}", error_text);
-    }
-    return res;
+    println!("{:?}", response);
+    let repos: Vec<Repo> = response.json()?;
+    println!("{:?}", repos);
+    Ok(repos)
 }
 
 fn main() {
-    let team_name = "team-name";
-    let token = "your-token";
-    let client = Client::new();
-    let mut repos = HashSet::new();
 
-    let url = format!("https://api.github.com/teams/{}/repos", team_name);
+    //Read and parse config ini file
+    let conf = Ini::load_from_file("config.ini").unwrap();
+    let section = conf.section(Some("Github")).unwrap();
+    let user_name = section.get("name").unwrap();
+    let access_token = section.get("token").unwrap();
 
-    let repo_response = get_repos(&url, &client, &token);
-
-
-    let team: Team = match repo_response.json() {
-        Ok(team) => team,
-        Err(err) => {
-            println!("Error parsing JSON response: {}", err);
-            return;
-        }
+    let repositories = match fetch_repositories(user_name, access_token) {
+        Ok(repositories) => repositories,
+        Err(err) => { panic!("Error fetching repositories: {}", err); }
     };
 
-    for repo in team.repos {
-        repos.insert(repo.name);
-    }
+    let repository_names: HashSet<String> = repositories.into_iter().map(|r| r.name).collect();
 
     let report = format!(
         "<html>
@@ -80,9 +61,9 @@ fn main() {
             </table>
         </body>
     </html>",
-        team_name,
-        team_name,
-        repos
+        user_name,
+        user_name,
+        repository_names
             .iter()
             .map(|name| {
                 format!(
