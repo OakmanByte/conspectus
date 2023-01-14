@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="table.css">
+</head>
+<body>
+<h2>{{user_name}} Repositories</h2>
+<table>
+    <tr>
+        <th>Name</th>
+        <th>Url</th>
+        <th>Language</th>
+    </tr>
+    {{#each repositories}}
+    <tr>
+        <td>{{name}}</td>
+        <td>{{html_url}}</td>
+        <td>{{language}}</td>
+    </tr>
+    {{/each}}
+</table>
+</body>
+</html>

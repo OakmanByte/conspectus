@@ -4,13 +4,15 @@ extern crate serde_json;
 extern crate ini;
 
 use serde::Deserialize;
+use serde::Serialize;
+use handlebars::Handlebars;
 
 use std::fs::File;
 use std::io::prelude::*;
 use ini::Ini;
+use serde_json::json;
 
-#[derive(Debug)]
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Repo {
     name: String,
     html_url: String,
@@ -30,44 +32,16 @@ fn fetch_repositories(user_name: &str, _access_token: &str) -> Result<Vec<Repo>,
 }
 
 fn generate_report(user_name: &str, repositories: Vec<Repo>) -> Result<(), Box<dyn std::error::Error>> {
-    let report = format!(
-        "<!DOCTYPE html>
-        <html>
-        <style>
-        table, th, td {{
-          border:1px solid black;
-        }}
-        </style>
-        <body>
-
-        <h2>{} Repositories</h2>
-            <table>
-                <tr>
-                    <th>Name</th>
-                    <th>Url</th>
-                    <th>Language</th>
-                </tr>
-                {}
-            </table>
-        </body>
-        </html>",
-        user_name,
-        repositories
-            .into_iter()
-            .map(|repo| {
-                format!(
-                    "<tr>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    </tr>",
-                    repo.name,
-                    repo.html_url,
-                    repo.language
-                )
-            })
-            .collect::<String>()
-    );
+    let mut handlebars = Handlebars::new();
+    handlebars
+        .register_template_file("table", "table.html")
+        .expect("Failed to register template file");
+    let report = handlebars
+        .render("table", &json!({
+        "user_name": user_name,
+        "repositories": repositories,
+    }))
+        .expect("Failed to render template");
 
     let mut file = File::create("report.html")?;
     file.write_all(report.as_bytes())?;
@@ -88,5 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let repositories = fetch_repositories(user_name, access_token)?;
+
+    let mut html_file = File::open("table.html").expect("Could not open HTML file");
+    let mut html = String::new();
+    html_file.read_to_string(&mut html).expect("Could not read HTML file");
+
     generate_report(user_name, repositories)
 }
