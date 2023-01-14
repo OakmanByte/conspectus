@@ -6,7 +6,6 @@ extern crate ini;
 use serde::Deserialize;
 use serde::Serialize;
 use handlebars::Handlebars;
-
 use std::fs::File;
 use std::io::prelude::*;
 use ini::Ini;
@@ -17,6 +16,8 @@ struct Repo {
     name: String,
     html_url: String,
     language: String,
+    archived: bool,
+    updated_at: String,
 }
 
 fn fetch_repositories(user_name: &str, _access_token: &str) -> Result<Vec<Repo>, reqwest::Error> {
@@ -24,7 +25,7 @@ fn fetch_repositories(user_name: &str, _access_token: &str) -> Result<Vec<Repo>,
     let url = format!("https://api.github.com/users/{}/repos", user_name);
     let response = client
         .get(&url)
-        //.header("Authorization", format!("Token {}", access_token))
+        //.header("Authorization", format!("token {}", access_token))
         .header("User-Agent", "conspectus/1.0")
         .send()?;
     let repos: Vec<Repo> = response.json()?;
@@ -62,5 +63,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let repositories = fetch_repositories(user_name, access_token)?;
+
+    let repositories: Vec<Repo> = repositories
+        .into_iter()
+        .map(|mut repo| {
+            repo.updated_at = repo.updated_at.split("T").next().unwrap_or("").to_string();
+            repo
+        })
+        .collect();
+
+    println!("{:?}", repositories);
+
     generate_report(user_name, repositories)
 }

@@ -5,17 +5,23 @@
 </head>
 <body>
 <h2>{{user_name}} Repositories</h2>
-<table>
+<table class="sortable">
     <tr>
         <th>Name</th>
         <th>Url</th>
         <th>Language</th>
+        <th>Archived</th>
+        <th>Last Update Date</th>
     </tr>
     {{#each repositories}}
     <tr>
         <td>{{name}}</td>
-        <td>{{html_url}}</td>
+        <td>
+            <a href={{html_url}}>{{html_url}}</a>
+        </td>
         <td>{{language}}</td>
+        <td>{{archived}}</td>
+        <td>{{updated_at}}</td>
     </tr>
     {{/each}}
 </table>

@@ -1,11 +1,33 @@
 table {
     border-collapse: collapse;
     width: 100%;
+    margin: 50px auto;
     background-color: #f2f2f2;
     color: #333;
 }
 
-th, td {
+h2 {
+text-align: center;
+}
+
+th {
+    text-align: left;
+    padding: 12px;
+    background-color: #333;
+    color: white;
+    font-weight: bold;
+}
+
+td {
     border: 1px solid #333;
-    padding: 10px;
+    padding: 12px;
+    text-align: left;
+}
+
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+tr:hover {
+    background-color: #ddd;
 }
