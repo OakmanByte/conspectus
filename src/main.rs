@@ -62,10 +62,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let repositories = fetch_repositories(user_name, access_token)?;
-
-    let mut html_file = File::open("table.html").expect("Could not open HTML file");
-    let mut html = String::new();
-    html_file.read_to_string(&mut html).expect("Could not read HTML file");
-
     generate_report(user_name, repositories)
 }
