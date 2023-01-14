@@ -16,33 +16,34 @@ struct Repo {
     name: String,
 }
 
-fn fetch_repositories(user_name: &str, access_token: &str) -> Result<Vec<Repo>, reqwest::Error> {
+fn fetch_repositories(user_name: &str, _access_token: &str) -> Result<Vec<Repo>, reqwest::Error> {
     let client = reqwest::blocking::Client::new();
     let url = format!("https://api.github.com/users/{}/repos", user_name);
-    println!("{}", url);
     let response = client
         .get(&url)
         //.header("Authorization", format!("Token {}", access_token))
-        .header("User-Agent", "request")
+        .header("User-Agent", "conspectus/1.0")
         .send()?;
-    println!("{:?}", response);
     let repos: Vec<Repo> = response.json()?;
-    println!("{:?}", repos);
     Ok(repos)
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    //Read and parse config ini file
-    let conf = Ini::load_from_file("config.ini").unwrap();
-    let section = conf.section(Some("Github")).unwrap();
-    let user_name = section.get("name").unwrap();
-    let access_token = section.get("token").unwrap();
+    //Read and parse CONFIG ini file
+    let config = Ini::load_from_file("config.ini")?;
 
-    let repositories = match fetch_repositories(user_name, access_token) {
-        Ok(repositories) => repositories,
-        Err(err) => { panic!("Error fetching repositories: {}", err); }
-    };
+    let section = config.section(Some("Github")).ok_or("Failed to find Github section in config file")?;
+
+    let user_name = section.get("name").ok_or("Failed to find user_name in config file")?;
+
+    let access_token = section.get("token").ok_or("Failed to find access_token in config file")?;
+
+    if user_name.is_empty() || access_token.is_empty() {
+        return Err(From::from("Missing username or access_token in the config file. Please see Readme file on how to setup the config file correctly."));
+    }
+
+    let repositories = fetch_repositories(user_name, access_token)?;
 
     let repository_names: HashSet<String> = repositories.into_iter().map(|r| r.name).collect();
 
@@ -76,16 +77,8 @@ fn main() {
             .collect::<String>()
     );
 
-    match File::create("report.html") {
-        Ok(mut file) => {
-            match file.write_all(report.as_bytes()) {
-                Ok(_) => println!("Report generated successfully!"),
-                Err(err) => println!("Error writing to report file: {}", err),
-            }
-        }
-        Err(err) => {
-            println!("Error creating report file: {}", err);
-            return;
-        }
-    };
+    let mut file = File::create("report.html")?;
+    file.write_all(report.as_bytes())?;
+    println!("Report generated successfully!");
+    Ok(())
 }
