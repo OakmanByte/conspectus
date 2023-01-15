@@ -85,6 +85,7 @@ dependencies = [
  "rust-ini",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]
