@@ -9,6 +9,7 @@ use handlebars::Handlebars;
 use std::fs::File;
 use std::io::prelude::*;
 use ini::Ini;
+use reqwest::StatusCode;
 use serde_json::json;
 use url::Url;
 
@@ -19,7 +20,28 @@ struct Repo {
     language: String,
     archived: bool,
     updated_at: String,
+    dependabot_exists: Option<bool>,
 }
+
+fn dependabot_file_exists(user_name: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let client = reqwest::blocking::Client::new();
+    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", user_name, repository_name))?;
+    let response = client
+        .get(url)
+        .header("Authorization", format!("token {}", access_token))
+        .header("User-Agent", "conspectus/1.0")
+        .send()?;
+
+    match response.status() {
+        StatusCode::OK => Ok(true),
+        StatusCode::NOT_FOUND => Ok(false),
+        s => {
+            println!("Strange status code found when getting dependabot contents, status: {:?}", s);
+            Ok(false)
+        }
+    }
+}
+
 
 fn fetch_repositories(_user_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<Repo>, Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::new();
@@ -71,9 +93,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut repositories = fetch_repositories(user_name, access_token, false)?;
 
-    //Change the datetime string format
+    //Change the datetime string format and check if dependabot file exists
     for repo in &mut repositories {
         repo.updated_at = repo.updated_at.split("T").next().unwrap_or("").to_string();
+        repo.dependabot_exists = Option::from(match dependabot_file_exists(user_name, access_token, &repo.name) {
+            Ok(exists) => exists,
+            Err(error) => {
+                println!("Error: {:?}", error);
+                false
+            }
+        });
     }
 
     println!("{:#?}", repositories);
