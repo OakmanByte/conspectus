@@ -9,6 +9,7 @@ use handlebars::Handlebars;
 use std::fs::File;
 use std::io::prelude::*;
 use ini::Ini;
+use reqwest::blocking::Client;
 use reqwest::StatusCode;
 use serde_json::json;
 use url::Url;
@@ -23,8 +24,21 @@ struct Repo {
     dependabot_exists: Option<bool>,
 }
 
-fn dependabot_file_exists(user_name: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+fn get_number_of_open_pull_requests(client: &Client, user_name: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls", user_name, repository_name))?;
+    let response = client
+        .get(url)
+        .header("Authorization", format!("token {}", access_token))
+        .header("User-Agent", "conspectus/1.0")
+        .send()?;
+
+    println!("HELLO: {:?}", response);
+
+    return Ok(true)
+}
+
+
+fn dependabot_file_exists(client: &Client, user_name: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", user_name, repository_name))?;
     let response = client
         .get(url)
@@ -43,8 +57,7 @@ fn dependabot_file_exists(user_name: &str, access_token: &str, repository_name: 
 }
 
 
-fn fetch_repositories(_user_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<Repo>, Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::new();
+fn fetch_repositories(client: &Client, _user_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<Repo>, Box<dyn std::error::Error>> {
     let url = Url::parse("https://api.github.com/user/repos")?;
     let response = client
         .get(url)
@@ -91,12 +104,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(From::from("Missing username or access_token in the config file. Please see Readme file on how to setup the config file correctly."));
     }
 
-    let mut repositories = fetch_repositories(user_name, access_token, false)?;
+    let client = reqwest::blocking::Client::new();
+
+    let mut repositories = fetch_repositories(&client, user_name, access_token, false)?;
+
+    get_number_of_open_pull_requests(&client, user_name, access_token, "test");
 
     //Change the datetime string format and check if dependabot file exists
     for repo in &mut repositories {
         repo.updated_at = repo.updated_at.split("T").next().unwrap_or("").to_string();
-        repo.dependabot_exists = Option::from(match dependabot_file_exists(user_name, access_token, &repo.name) {
+        repo.dependabot_exists = Option::from(match dependabot_file_exists(&client, user_name, access_token, &repo.name) {
             Ok(exists) => exists,
             Err(error) => {
                 println!("Error: {:?}", error);
