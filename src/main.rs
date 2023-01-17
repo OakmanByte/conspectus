@@ -41,17 +41,20 @@ struct FullRepo {
     number_of_open_pull_requests: u16,
 }
 
-fn get_number_of_open_pull_requests(client: &Client, user_name: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls", user_name, repository_name))?;
+fn get_number_of_open_pull_requests(client: &Client, user_name: &str, access_token: &str, repository_name: &str) -> Result<u16, Box<dyn std::error::Error>> {
+    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", user_name, repository_name))?;
+
     let response = client
         .get(url)
         .header("Authorization", format!("token {}", access_token))
         .header("User-Agent", "conspectus/1.0")
         .send()?;
 
-    println!("HELLO: {:?}", response);
-
-    return Ok(true);
+    let json: serde_json::Value = response.json()?;
+    if json.as_array().is_none(){
+        return Ok(0)
+    }
+    Ok(json.as_array().unwrap().len() as u16)
 }
 
 
@@ -147,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client::new();
 
-    let mut repositories = fetch_repositories(&client, user_name, access_token, false)?;
+    let repositories = fetch_repositories(&client, user_name, access_token, false)?;
 
     //get_number_of_open_pull_requests(&client, user_name, access_token, "test");
 
@@ -162,6 +165,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(error) => {
                 println!("Error: {:?}", error);
                 false
+            }
+        };
+        repo.number_of_open_pull_requests = match get_number_of_open_pull_requests(&client, user_name, access_token, &repo.repo.name) {
+            Ok(num) => num,
+            Err(error) => {
+                println!("Error: {:?}", error);
+                0
             }
         };
     }
