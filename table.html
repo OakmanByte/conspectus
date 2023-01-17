@@ -11,6 +11,7 @@
         <th>Language</th>
         <th>Last Update Date</th>
         <th>Has dependabot</th>
+        <th>Number of Open Pull Requests</th>
         <th>Url</th>
     </tr>
     {{#each repositories}}
@@ -19,6 +20,8 @@
         <td>{{language}}</td>
         <td>{{updated_at}}</td>
         <td>{{dependabot_exists}}</td>
+        <td>{{number_of_open_pull_requests}}</td>
+
         <td>
             <a href={{html_url}}>{{html_url}}</a>
         </td>
