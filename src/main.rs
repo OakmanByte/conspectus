@@ -14,6 +14,8 @@ use reqwest::StatusCode;
 use serde_json::json;
 use url::Url;
 use std::env;
+use rayon::prelude::*;
+
 
 #[derive(Debug, Deserialize, Serialize)]
 //Used for storing the data we get back from Github when we fetch repositories for a user/team
@@ -169,7 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }).collect();
 
     //Change the datetime string format and check if dependabot file exists
-    for repo in &mut custom_repos {
+    custom_repos.par_iter_mut().for_each(|repo| {
         repo.repo.pushed_at = repo.repo.pushed_at.split("T").next().unwrap_or("").to_string();
         repo.dependabot_exists = match dependabot_file_exists(&client, user_name, org_name, access_token, &repo.repo.name) {
             Ok(exists) => exists,
@@ -185,6 +187,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 0
             }
         };
-    }
+    });
     generate_report(user_name, custom_repos)
 }
