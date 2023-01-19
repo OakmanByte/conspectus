@@ -13,6 +13,7 @@ use reqwest::blocking::Client;
 use reqwest::StatusCode;
 use serde_json::json;
 use url::Url;
+use std::env;
 
 #[derive(Debug, Deserialize, Serialize)]
 //Used for storing the data we get back from Github when we fetch repositories for a user/team
@@ -22,7 +23,7 @@ struct GithubRepo {
     //Github api returns either the most used language or can return null if there is no identifiable language, therefore we need to use Option.
     language: Option<String>,
     archived: bool,
-    updated_at: String,
+    pushed_at: String,
 }
 
 //Used to store additional repository information in addition to what is stored in the repo field.
@@ -40,11 +41,10 @@ struct FullRepo {
     html_url: String,
     language: String,
     archived: bool,
-    updated_at: String,
+    pushed_at: String,
     dependabot_exists: bool,
     number_of_open_pull_requests: u16,
 }
-
 
 fn get_number_of_open_pull_requests(client: &Client, user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<u16, Box<dyn std::error::Error>> {
     //let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", user_name, repository_name))?;
@@ -82,23 +82,10 @@ fn dependabot_file_exists(client: &Client, _user_name: &str, org: &str, access_t
     }
 }
 
-fn generate_custom_repo(repositories: Vec<GithubRepo>) -> Vec<CustomRepo> {
-    let custom_repo: Vec<CustomRepo> = repositories.into_iter().map(|r| {
-        CustomRepo {
-            repo: r,
-            dependabot_exists: false,
-            number_of_open_pull_requests: 0,
-        }
-    }).collect();
-
-    return custom_repo;
-}
-
-
 fn fetch_repositories(client: &Client, _user_name: &str, org: &str, team_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<GithubRepo>, Box<dyn std::error::Error>> {
     //let url = Url::parse("https://api.github.com/user/repos")?;
-    let url = Url::parse(&*format!("https://api.github.com/orgs/{}/teams/{}/repos", org, team_name))?;
-    let mut response = client
+    let url = Url::parse(&*format!("https://api.github.com/orgs/{}/teams/{}/repos?per_page=100", org, team_name))?;
+    let response = client
         .get(url)
         .header("Authorization", format!("token {}", access_token))
         .header("User-Agent", "conspectus/1.0")
@@ -121,7 +108,7 @@ fn generate_report(user_name: &str, repositories: Vec<CustomRepo>) -> Result<(),
             html_url: r.repo.html_url,
             language: r.repo.language.unwrap_or("None".parse().unwrap()),
             archived: r.repo.archived,
-            updated_at: r.repo.updated_at,
+            pushed_at: r.repo.pushed_at,
             dependabot_exists: r.dependabot_exists,
             number_of_open_pull_requests: r.number_of_open_pull_requests,
         }
@@ -145,6 +132,18 @@ fn generate_report(user_name: &str, repositories: Vec<CustomRepo>) -> Result<(),
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    const ALLOWED_MODES: [&str; 2] = ["user", "org"];
+    let args: Vec<String> = env::args().collect();
+
+    let mode = match args.iter().position(|arg| arg == "--mode" || arg == "-mode") {
+        Some(i) => args.get(i + 1),
+        None => None
+    }.expect("No mode was provided, provide either user or org");
+
+    if !ALLOWED_MODES.contains(&&**mode) {
+        return Err(From::from(format!("unsupported mode was given: {}, supported modes are user or org", mode)));
+    }
+    println!("THIS:{}", *mode);
 
     //If we send in team we use team, otherwise username
     //Read and parse CONFIG ini file
@@ -161,11 +160,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client::new();
     let repositories = fetch_repositories(&client, user_name, org_name, team_name, access_token, false)?;
-    let mut custom_repos: Vec<CustomRepo> = generate_custom_repo(repositories);
+    let mut custom_repos: Vec<CustomRepo> = repositories.into_iter().map(|r| {
+        CustomRepo {
+            repo: r,
+            dependabot_exists: false,
+            number_of_open_pull_requests: 0,
+        }
+    }).collect();
 
     //Change the datetime string format and check if dependabot file exists
     for repo in &mut custom_repos {
-        repo.repo.updated_at = repo.repo.updated_at.split("T").next().unwrap_or("").to_string();
+        repo.repo.pushed_at = repo.repo.pushed_at.split("T").next().unwrap_or("").to_string();
         repo.dependabot_exists = match dependabot_file_exists(&client, user_name, org_name, access_token, &repo.repo.name) {
             Ok(exists) => exists,
             Err(error) => {
