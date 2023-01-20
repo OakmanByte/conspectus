@@ -48,9 +48,19 @@ struct FullRepo {
     number_of_open_pull_requests: u16,
 }
 
-fn get_number_of_open_pull_requests(client: &Client, user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<u16, Box<dyn std::error::Error>> {
-    //let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", user_name, repository_name))?;
-    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", org, repository_name))?;
+#[derive(PartialEq)]
+enum Mode {
+    User,
+    Org,
+}
+
+fn get_number_of_open_pull_requests(client: &Client, mode: &Mode, user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<u16, Box<dyn std::error::Error>> {
+    let url: Url;
+    if *mode == Mode::User {
+        url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", user_name, repository_name))?;
+    } else {
+        url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/pulls?state=open", org, repository_name))?;
+    }
 
     let response = client
         .get(url)
@@ -65,9 +75,14 @@ fn get_number_of_open_pull_requests(client: &Client, user_name: &str, org: &str,
     Ok(json.as_array().unwrap().len() as u16)
 }
 
-fn dependabot_file_exists(client: &Client, _user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    //let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", user_name, repository_name))?;
-    let url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", org, repository_name))?;
+fn dependabot_file_exists(client: &Client, mode: &Mode, user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let url: Url;
+    if *mode == Mode::User {
+        url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", user_name, repository_name))?;
+    } else {
+        url = Url::parse(&*format!("https://api.github.com/repos/{}/{}/contents/.github/dependabot.yml", org, repository_name))?;
+    }
+
     let response = client
         .get(url)
         .header("Authorization", format!("token {}", access_token))
@@ -84,9 +99,13 @@ fn dependabot_file_exists(client: &Client, _user_name: &str, org: &str, access_t
     }
 }
 
-fn fetch_repositories(client: &Client, _user_name: &str, org: &str, team_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<GithubRepo>, Box<dyn std::error::Error>> {
-    //let url = Url::parse("https://api.github.com/user/repos")?;
-    let url = Url::parse(&*format!("https://api.github.com/orgs/{}/teams/{}/repos?per_page=100", org, team_name))?;
+fn fetch_repositories(client: &Client, mode: &Mode, org: &str, team_name: &str, access_token: &str, include_archived: bool) -> Result<Vec<GithubRepo>, Box<dyn std::error::Error>> {
+    let url: Url;
+    if *mode == Mode::User {
+        url = Url::parse("https://api.github.com/user/repos")?;
+    } else {
+        url = Url::parse(&*format!("https://api.github.com/orgs/{}/teams/{}/repos?per_page=100", org, team_name))?;
+    }
     let response = client
         .get(url)
         .header("Authorization", format!("token {}", access_token))
@@ -134,34 +153,42 @@ fn generate_report(user_name: &str, repositories: Vec<CustomRepo>) -> Result<(),
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const ALLOWED_MODES: [&str; 2] = ["user", "org"];
     let args: Vec<String> = env::args().collect();
+    let mut org_name: &str = "";
+    let mut team_name: &str = "";
+    let mut user_name: &str = "";
 
-    let mode = match args.iter().position(|arg| arg == "--mode" || arg == "-mode") {
+    let mode: String = match args.iter().position(|arg| arg == "--mode" || arg == "-mode") {
         Some(i) => args.get(i + 1),
         None => None
-    }.expect("No mode was provided, provide either user or org");
+    }.expect("No mode was provided, provide either user or org").to_string();
 
-    if !ALLOWED_MODES.contains(&&**mode) {
-        return Err(From::from(format!("unsupported mode was given: {}, supported modes are user or org", mode)));
-    }
-    println!("THIS:{}", *mode);
+    let selected_mode: Mode = match mode.to_lowercase().as_str() {
+        "user" => Mode::User,
+        "org" => Mode::Org,
+        _ => return Err(From::from(format!("unsupported mode was given: {}, supported modes are user or org", mode)))
+    };
 
-    //If we send in team we use team, otherwise username
-    //Read and parse CONFIG ini file
+    println!("THIS:{}", mode);
+
+    //Necessary in both modes
     let config = Ini::load_from_file("config.ini")?;
     let section = config.section(Some("Github")).ok_or_else(|| "Failed to find Github section in config file")?;
-    let user_name = section.get("user_name").ok_or_else(|| "Failed to find user_name in config file")?;
-    let org_name = section.get("organization_name").ok_or_else(|| "Failed to find organization_name in config file")?;
-    let team_name = section.get("team_name").ok_or_else(|| "Failed to find team_name in config file")?;
     let access_token = section.get("token").ok_or_else(|| "Failed to find access_token in config file")?;
 
-    if user_name.is_empty() || access_token.is_empty() {
-        return Err(From::from("Missing username or access_token in the config file. Please see Readme file on how to setup the config file correctly."));
+    //Required config fields for org mode
+    if selected_mode == Mode::Org {
+        org_name = section.get("organization_name").ok_or_else(|| "Failed to find organization_name in config file")?;
+        team_name = section.get("team_name").ok_or_else(|| "Failed to find team_name in config file")?;
+    }
+    //Required config field for user mode
+    else {
+        user_name = section.get("user_name").ok_or_else(|| "Failed to find user_name in config file")?;
     }
 
+
     let client = Client::new();
-    let repositories = fetch_repositories(&client, user_name, org_name, team_name, access_token, false)?;
+    let repositories = fetch_repositories(&client, &selected_mode, org_name, team_name, access_token, false)?;
     let mut custom_repos: Vec<CustomRepo> = repositories.into_iter().map(|r| {
         CustomRepo {
             repo: r,
@@ -170,17 +197,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }).collect();
 
-    //Change the datetime string format and check if dependabot file exists
     custom_repos.par_iter_mut().for_each(|repo| {
         repo.repo.pushed_at = repo.repo.pushed_at.split("T").next().unwrap_or("").to_string();
-        repo.dependabot_exists = match dependabot_file_exists(&client, user_name, org_name, access_token, &repo.repo.name) {
+        repo.dependabot_exists = match dependabot_file_exists(&client, &selected_mode, user_name, org_name, access_token, &repo.repo.name) {
             Ok(exists) => exists,
             Err(error) => {
                 println!("Error: {:?}", error);
                 false
             }
         };
-        repo.number_of_open_pull_requests = match get_number_of_open_pull_requests(&client, user_name, org_name, access_token, &repo.repo.name) {
+        repo.number_of_open_pull_requests = match get_number_of_open_pull_requests(&client, &selected_mode, user_name, org_name, access_token, &repo.repo.name) {
             Ok(num) => num,
             Err(error) => {
                 println!("Error: {:?}", error);
