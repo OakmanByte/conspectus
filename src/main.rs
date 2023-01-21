@@ -54,6 +54,10 @@ enum Mode {
     Org,
 }
 
+const AUTHORIZATION: &str = "Authorization";
+const USER_AGENT: (&str, &str) = ("User-Agent", "conspectus/1.0");
+
+
 fn get_number_of_open_pull_requests(client: &Client, mode: &Mode, user_name: &str, org: &str, access_token: &str, repository_name: &str) -> Result<u16, Box<dyn std::error::Error>> {
     let url: Url;
     if *mode == Mode::User {
@@ -64,8 +68,8 @@ fn get_number_of_open_pull_requests(client: &Client, mode: &Mode, user_name: &st
 
     let response = client
         .get(url)
-        .header("Authorization", format!("token {}", access_token))
-        .header("User-Agent", "conspectus/1.0")
+        .header(AUTHORIZATION, format!("token {}", access_token))
+        .header(USER_AGENT.0, USER_AGENT.1)
         .send()?;
 
     let json: serde_json::Value = response.json()?;
@@ -85,8 +89,8 @@ fn dependabot_file_exists(client: &Client, mode: &Mode, user_name: &str, org: &s
 
     let response = client
         .get(url)
-        .header("Authorization", format!("token {}", access_token))
-        .header("User-Agent", "conspectus/1.0")
+        .header(AUTHORIZATION, format!("token {}", access_token))
+        .header(USER_AGENT.0, USER_AGENT.1)
         .send()?;
 
     match response.status() {
@@ -108,8 +112,8 @@ fn fetch_repositories(client: &Client, mode: &Mode, org: &str, team_name: &str, 
     }
     let response = client
         .get(url)
-        .header("Authorization", format!("token {}", access_token))
-        .header("User-Agent", "conspectus/1.0")
+        .header(AUTHORIZATION, format!("token {}", access_token))
+        .header(USER_AGENT.0, USER_AGENT.1)
         .send()?;
 
     let mut repos: Vec<GithubRepo> = response.json()?;
@@ -169,7 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err(From::from(format!("unsupported mode was given: {}, supported modes are user or org", mode)))
     };
 
-    println!("THIS:{}", mode);
+    println!("Selected mode: {}", mode);
 
     //Necessary in both modes
     let config = Ini::load_from_file("config.ini")?;
